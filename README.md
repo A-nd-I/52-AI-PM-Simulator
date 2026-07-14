@@ -1,10 +1,13 @@
-# AI PM Interview Practice Game
+# PM Interview Practice Game
 
-A single-player browser game for practicing difficult AI Product Manager interview questions with immediate feedback and competency tracking.
+A single-player browser game for practicing difficult Product Manager interview questions with immediate feedback and competency tracking. Two roles are available, each with its own bank of 100 questions and its own competency framework:
+
+- **AI Product Manager** – models, evals, agents, responsible AI, and AI product strategy
+- **SaaS Product Manager** – pricing, retention, onboarding, PLG, integrations, and enterprise SaaS
 
 ## Purpose
 
-This game helps AI Product Manager candidates:
+This game helps Product Manager candidates:
 
 1. **Practice** realistic scenario-based interview questions
 2. **Make decisions** with measurable consequences
@@ -33,9 +36,11 @@ That's it. No build process, no dependencies, no installation.
 
 ### Start Screen
 
-The start screen shows options to:
-- **Start Game** – Choose a game mode and begin
-- **Previous Sessions** – Review past attempts (MVP limitation: placeholder only)
+The start screen asks you to choose the role you want to practice for:
+- **AI Product Manager** – 100 questions on AI/ML product management
+- **SaaS Product Manager** – 100 questions on SaaS product management
+
+After choosing a role, you select a game mode. Scores and sessions are tracked separately per role.
 
 ### Game Modes
 
@@ -67,6 +72,20 @@ The start screen shows options to:
 - Practicing under pressure
 - Testing readiness for actual interviews
 - Measuring improvement over time
+
+#### Trade-off Lab
+
+**How it works:**
+- Study mode: no scoring, no timer
+- Pick any of the 100 questions and compare its four options side by side in an impact matrix (consequence metrics per option, colored by favorability)
+- Each option shows its feedback and trade-offs; the recommended answer is highlighted with the full explanation, interview insight, and learning point
+- Tension lens: choose two consequence dimensions (e.g., Delivery Speed vs Customer Trust) to list the questions where they conflict, ranked by conflict strength
+- Search filters the question list by title or competency
+
+**Best for:**
+- Studying why the strongest answer wins
+- Understanding classic PM tensions (speed vs trust, revenue vs compliance, etc.)
+- Reviewing consequence profiles without playing a session
 
 ### Question Screen
 
@@ -179,7 +198,9 @@ Your overall score is calculated as: (total points earned / total points availab
 
 ### Competency Categories
 
-The 18 competency areas are:
+Each role has its own set of 18 competency areas.
+
+**AI Product Manager:**
 
 1. Product Strategy
 2. Customer Discovery
@@ -200,7 +221,28 @@ The 18 competency areas are:
 17. Agentic AI Systems
 18. Business and Monetization
 
-Your performance is tracked separately in each area.
+**SaaS Product Manager:**
+
+1. Product Strategy
+2. Customer Discovery
+3. Pricing and Packaging
+4. Churn and Retention
+5. Onboarding and Activation
+6. Growth and Acquisition
+7. Metrics and Experimentation
+8. Technical Trade-offs
+9. Platform and Integrations
+10. Security and Compliance
+11. Product Execution
+12. Prioritization and MVP Scoping
+13. Stakeholder Management
+14. Enterprise SaaS
+15. Communication and Leadership
+16. Post-Launch Monitoring
+17. UX and Design Collaboration
+18. Business and Monetization
+
+Your performance is tracked separately in each area, per role.
 
 ### Interview Readiness Classifications
 
@@ -235,7 +277,7 @@ Each consequence is scored from -10 to +10, where:
 
 ## Data Persistence
 
-The game uses browser `localStorage` to save:
+The game uses browser `localStorage` to save, separately for each role (keys prefixed `ai_pm_` and `saas_pm_`):
 
 - **Highest overall score** – Your best session score
 - **Previous five sessions** – Summary of your last 5 attempts
@@ -263,8 +305,9 @@ To clear your saved data:
 52-AI-PM-Simulator/
 ├── index.html          # Application shell (semantic HTML)
 ├── styles.css          # All styling and responsive design
-├── app.js              # Game logic, state, scoring, UI rendering
-├── questions.js        # 100 hardcoded questions
+├── app.js              # Game logic, state, scoring, role config, UI rendering
+├── questions.js        # 100 hardcoded AI PM questions
+├── questions-saas.js   # 100 hardcoded SaaS PM questions
 └── README.md           # This file
 ```
 
@@ -289,9 +332,9 @@ To clear your saved data:
 - localStorage persistence
 - Validation of question bank at startup
 
-**questions.js** – Question data:
-- 100 complete questions with all metadata
-- Validation checks on startup (logs to console)
+**questions.js / questions-saas.js** – Question data:
+- 100 complete questions per role with all metadata
+- Both banks are validated on startup (logs to console)
 - No business logic—purely data
 
 ## Code Quality
@@ -460,4 +503,4 @@ MVP v1.0 – July 2026
 
 ---
 
-**Ready to practice?** Open `index.html` and choose your game mode. Good luck with your interviews!
+**Ready to practice?** Open `index.html`, choose your role, and pick a game mode. Good luck with your interviews!

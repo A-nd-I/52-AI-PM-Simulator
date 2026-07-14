@@ -5,6 +5,130 @@
 const INTERVIEW_QUESTION_COUNT = 10;
 const INTERVIEW_SECONDS_PER_QUESTION = 90;
 
+// =============================================================================
+// ROLE CONFIGURATION
+// Each role has its own question bank, competency framework, and storage space.
+// =============================================================================
+
+const ROLES = {
+    ai: {
+        id: 'ai',
+        name: 'AI Product Manager',
+        tagline: 'Models, evals, agents, responsible AI, and AI product strategy.',
+        storagePrefix: 'ai_pm',
+        getQuestions: () => QUESTIONS,
+        competencies: [
+            'Product Strategy',
+            'Customer Discovery',
+            'AI and ML Fundamentals',
+            'Data Strategy',
+            'AI Evaluation',
+            'Metrics and Experimentation',
+            'Technical Trade-offs',
+            'Responsible AI and Governance',
+            'Privacy and Security',
+            'Human-in-the-Loop Design',
+            'Product Execution',
+            'Prioritization and MVP Scoping',
+            'Stakeholder Management',
+            'Enterprise AI Products',
+            'Communication and Leadership',
+            'Post-Launch Monitoring',
+            'Agentic AI Systems',
+            'Business and Monetization'
+        ]
+    },
+    saas: {
+        id: 'saas',
+        name: 'SaaS Product Manager',
+        tagline: 'Pricing, retention, onboarding, PLG, integrations, and enterprise SaaS.',
+        storagePrefix: 'saas_pm',
+        getQuestions: () => SAAS_QUESTIONS,
+        competencies: [
+            'Product Strategy',
+            'Customer Discovery',
+            'Pricing and Packaging',
+            'Churn and Retention',
+            'Onboarding and Activation',
+            'Growth and Acquisition',
+            'Metrics and Experimentation',
+            'Technical Trade-offs',
+            'Platform and Integrations',
+            'Security and Compliance',
+            'Product Execution',
+            'Prioritization and MVP Scoping',
+            'Stakeholder Management',
+            'Enterprise SaaS',
+            'Communication and Leadership',
+            'Post-Launch Monitoring',
+            'UX and Design Collaboration',
+            'Business and Monetization'
+        ]
+    }
+};
+
+function getActiveRole() {
+    return ROLES[GameState.currentRole] || ROLES.ai;
+}
+
+// =============================================================================
+// TRADE-OFF LAB
+// Study tool: compares the consequence profiles of all four options of a
+// question, and finds questions where two dimensions pull in opposite ways.
+// =============================================================================
+
+// higherIsBetter=false marks dimensions where an increase is unfavorable
+const CONSEQUENCE_DIMENSIONS = [
+    { key: 'customerTrust', label: 'Customer Trust', higherIsBetter: true },
+    { key: 'businessValue', label: 'Business Value', higherIsBetter: true },
+    { key: 'deliverySpeed', label: 'Delivery Speed', higherIsBetter: true },
+    { key: 'reliability', label: 'Reliability', higherIsBetter: true },
+    { key: 'adoption', label: 'Adoption', higherIsBetter: true },
+    { key: 'revenue', label: 'Revenue', higherIsBetter: true },
+    { key: 'teamMorale', label: 'Team Morale', higherIsBetter: true },
+    { key: 'stakeholderConfidence', label: 'Stakeholder Confidence', higherIsBetter: true },
+    { key: 'complianceRisk', label: 'Compliance Risk', higherIsBetter: false },
+    { key: 'securityRisk', label: 'Security Risk', higherIsBetter: false },
+    { key: 'technicalDebt', label: 'Technical Debt', higherIsBetter: false },
+    { key: 'operatingCost', label: 'Operating Cost', higherIsBetter: false }
+];
+
+const TradeoffLab = {
+    getDimension(key) {
+        return CONSEQUENCE_DIMENSIONS.find(d => d.key === key);
+    },
+
+    // Normalizes a raw metric value so that positive always means "favorable"
+    goodness(key, value) {
+        const dim = this.getDimension(key);
+        return dim && !dim.higherIsBetter ? -value : value;
+    },
+
+    // Conflict strength of one option: how much it improves one dimension
+    // while worsening the other (0 if there is no conflict)
+    optionTension(option, keyA, keyB) {
+        const metrics = option.consequenceMetrics || {};
+        if (!(keyA in metrics) || !(keyB in metrics)) return 0;
+        const a = this.goodness(keyA, metrics[keyA]);
+        const b = this.goodness(keyB, metrics[keyB]);
+        if ((a > 0 && b < 0) || (a < 0 && b > 0)) {
+            return Math.min(Math.abs(a), Math.abs(b));
+        }
+        return 0;
+    },
+
+    questionTension(question, keyA, keyB) {
+        return Math.max(...question.options.map(o => this.optionTension(o, keyA, keyB)));
+    },
+
+    rankByTension(questions, keyA, keyB) {
+        return questions
+            .map(question => ({ question, tension: this.questionTension(question, keyA, keyB) }))
+            .filter(item => item.tension > 0)
+            .sort((a, b) => b.tension - a.tension);
+    }
+};
+
 const GameState = {
     // Screens
     START: 'start',
@@ -13,6 +137,7 @@ const GameState = {
     FEEDBACK: 'feedback',
     RESULTS: 'results',
     REVIEW: 'review',
+    TRADEOFF_LAB: 'tradeoff_lab',
 
     // Game modes
     PRACTICE: 'practice',
@@ -20,6 +145,7 @@ const GameState = {
 
     // Current session
     currentScreen: 'start',
+    currentRole: null,
     currentMode: null,
     currentQuestionIndex: 0,
     currentQuestion: null,
@@ -44,7 +170,13 @@ const GameState = {
     sessionData: null,
 
     // Review filters
-    reviewFilter: 'all'
+    reviewFilter: 'all',
+
+    // Trade-off Lab
+    labDimensionA: '',
+    labDimensionB: '',
+    labQuestionId: null,
+    labSearch: ''
 };
 
 // =============================================================================
@@ -52,31 +184,9 @@ const GameState = {
 // =============================================================================
 
 const Scoring = {
-    // Competency categories
-    COMPETENCIES: [
-        'Product Strategy',
-        'Customer Discovery',
-        'AI and ML Fundamentals',
-        'Data Strategy',
-        'AI Evaluation',
-        'Metrics and Experimentation',
-        'Technical Trade-offs',
-        'Responsible AI and Governance',
-        'Privacy and Security',
-        'Human-in-the-Loop Design',
-        'Product Execution',
-        'Prioritization and MVP Scoping',
-        'Stakeholder Management',
-        'Enterprise AI Products',
-        'Communication and Leadership',
-        'Post-Launch Monitoring',
-        'Agentic AI Systems',
-        'Business and Monetization'
-    ],
-
     initializeCompetencies() {
         const scores = {};
-        this.COMPETENCIES.forEach(comp => {
+        getActiveRole().competencies.forEach(comp => {
             scores[comp] = {
                 points: 0,
                 available: 0,
@@ -153,55 +263,53 @@ const Scoring = {
 // =============================================================================
 
 const Persistence = {
-    STORAGE_KEYS: {
-        BEST_SCORE: 'ai_pm_best_score',
-        SESSIONS: 'ai_pm_sessions',
-        BEST_BY_COMPETENCY: 'ai_pm_best_competency',
-        CURRENT_PRACTICE: 'ai_pm_current_practice'
+    // Keys are prefixed with the active role so AI PM and SaaS PM progress stay separate
+    key(suffix) {
+        return `${getActiveRole().storagePrefix}_${suffix}`;
     },
 
     saveBestScore(score) {
-        const current = parseInt(localStorage.getItem(this.STORAGE_KEYS.BEST_SCORE) || '0', 10);
+        const current = parseInt(localStorage.getItem(this.key('best_score')) || '0', 10);
         if (score > current) {
-            localStorage.setItem(this.STORAGE_KEYS.BEST_SCORE, score.toString());
+            localStorage.setItem(this.key('best_score'), score.toString());
         }
     },
 
     saveSession(sessionData) {
-        const sessions = JSON.parse(localStorage.getItem(this.STORAGE_KEYS.SESSIONS) || '[]');
+        const sessions = JSON.parse(localStorage.getItem(this.key('sessions')) || '[]');
         sessions.unshift(sessionData);
         // Keep only last 5 sessions
         sessions.splice(5);
-        localStorage.setItem(this.STORAGE_KEYS.SESSIONS, JSON.stringify(sessions));
+        localStorage.setItem(this.key('sessions'), JSON.stringify(sessions));
     },
 
     getSessions() {
-        return JSON.parse(localStorage.getItem(this.STORAGE_KEYS.SESSIONS) || '[]');
+        return JSON.parse(localStorage.getItem(this.key('sessions')) || '[]');
     },
 
     getBestScore() {
-        return parseInt(localStorage.getItem(this.STORAGE_KEYS.BEST_SCORE) || '0', 10);
+        return parseInt(localStorage.getItem(this.key('best_score')) || '0', 10);
     },
 
     saveBestCompetencyScores(scores) {
-        localStorage.setItem(this.STORAGE_KEYS.BEST_BY_COMPETENCY, JSON.stringify(scores));
+        localStorage.setItem(this.key('best_competency'), JSON.stringify(scores));
     },
 
     getBestCompetencyScores() {
-        return JSON.parse(localStorage.getItem(this.STORAGE_KEYS.BEST_BY_COMPETENCY) || '{}');
+        return JSON.parse(localStorage.getItem(this.key('best_competency')) || '{}');
     },
 
     savePracticeSession(sessionData) {
-        localStorage.setItem(this.STORAGE_KEYS.CURRENT_PRACTICE, JSON.stringify(sessionData));
+        localStorage.setItem(this.key('current_practice'), JSON.stringify(sessionData));
     },
 
     getPracticeSession() {
-        const data = localStorage.getItem(this.STORAGE_KEYS.CURRENT_PRACTICE);
+        const data = localStorage.getItem(this.key('current_practice'));
         return data ? JSON.parse(data) : null;
     },
 
     clearPracticeSession() {
-        localStorage.removeItem(this.STORAGE_KEYS.CURRENT_PRACTICE);
+        localStorage.removeItem(this.key('current_practice'));
     }
 };
 
@@ -210,7 +318,7 @@ const Persistence = {
 // =============================================================================
 
 const QuestionUtils = {
-    validateQuestionBank(questions) {
+    validateQuestionBank(questions, competencies, bankName) {
         const errors = [];
 
         // Check for 100 questions
@@ -244,12 +352,12 @@ const QuestionUtils = {
             }
 
             // Check competencies
-            if (!Scoring.COMPETENCIES.includes(q.primaryCompetency)) {
+            if (!competencies.includes(q.primaryCompetency)) {
                 errors.push(`Question ${q.id}: Invalid primary competency "${q.primaryCompetency}"`);
             }
 
             q.secondaryCompetencies?.forEach(comp => {
-                if (!Scoring.COMPETENCIES.includes(comp)) {
+                if (!competencies.includes(comp)) {
                     errors.push(`Question ${q.id}: Invalid secondary competency "${comp}"`);
                 }
             });
@@ -263,12 +371,12 @@ const QuestionUtils = {
         });
 
         if (errors.length > 0) {
-            console.error('Question bank validation errors:');
+            console.error(`Question bank validation errors (${bankName || 'bank'}):`);
             errors.forEach(e => console.error(`  - ${e}`));
             return false;
         }
 
-        console.log('✓ Question bank validation passed (100 questions, all valid)');
+        console.log(`✓ Question bank validation passed for ${bankName || 'bank'} (100 questions, all valid)`);
         return true;
     },
 
@@ -407,6 +515,9 @@ const UI = {
             case GameState.REVIEW:
                 this.renderReviewScreen();
                 break;
+            case GameState.TRADEOFF_LAB:
+                this.renderTradeoffLabScreen();
+                break;
         }
     },
 
@@ -415,20 +526,22 @@ const UI = {
         el.className = 'screen start-screen';
         el.innerHTML = `
             <div class="screen-content">
-                <h1>AI PM Interview Practice</h1>
+                <h1>PM Interview Practice</h1>
                 <p class="subtitle">Master difficult product decisions</p>
                 <p class="description">
-                    Practice realistic AI product management scenarios. Make decisions, see consequences, 
-                    and understand the trade-offs. Identify strengths and development areas to excel in interviews.
+                    Practice realistic product management scenarios. Make decisions, see consequences, 
+                    and understand the trade-offs. Choose the role you want to practice for.
                 </p>
                 <div class="mode-selection">
-                    <div class="mode-card" onclick="handleModeSelect()">
-                        <h3>Start Game</h3>
-                        <p>Choose your game mode and begin</p>
+                    <div class="mode-card role-card" onclick="selectRole('ai')" tabindex="0" role="button">
+                        <span class="role-badge">100 questions</span>
+                        <h3>${ROLES.ai.name}</h3>
+                        <p>${ROLES.ai.tagline}</p>
                     </div>
-                    <div class="mode-card" onclick="handleReviewPreviousSessions()">
-                        <h3>Previous Sessions</h3>
-                        <p>Review past attempts and results</p>
+                    <div class="mode-card role-card" onclick="selectRole('saas')" tabindex="0" role="button">
+                        <span class="role-badge">100 questions</span>
+                        <h3>${ROLES.saas.name}</h3>
+                        <p>${ROLES.saas.tagline}</p>
                     </div>
                 </div>
             </div>
@@ -437,6 +550,7 @@ const UI = {
     },
 
     renderModeSelectScreen() {
+        const role = getActiveRole();
         const el = document.createElement('div');
         el.className = 'screen';
         el.innerHTML = `
@@ -444,6 +558,7 @@ const UI = {
                 <div class="card">
                     <div class="card-header">
                         <h2 class="card-title">Select Game Mode</h2>
+                        <span class="badge badge-competency">${role.name}</span>
                     </div>
                     <div class="mode-selection">
                         <div class="mode-card" onclick="startPracticeMode()">
@@ -460,9 +575,16 @@ const UI = {
                                 Get final results only. Real interview conditions.
                             </p>
                         </div>
+                        <div class="mode-card" onclick="openTradeoffLab()">
+                            <h3>Trade-off Lab</h3>
+                            <p>
+                                Study mode. Compare all four options of any question side by side,
+                                and explore where classic PM tensions collide.
+                            </p>
+                        </div>
                     </div>
                     <div style="margin-top: 30px;">
-                        <button class="btn-secondary" onclick="navigateTo('${GameState.START}')">Back</button>
+                        <button class="btn-secondary" onclick="navigateTo('${GameState.START}')">Change Role</button>
                     </div>
                 </div>
             </div>
@@ -840,21 +962,183 @@ const UI = {
     },
 
     formatMetricLabel(key) {
-        const labels = {
-            customerTrust: 'Customer Trust',
-            businessValue: 'Business Value',
-            deliverySpeed: 'Delivery Speed',
-            reliability: 'Reliability',
-            complianceRisk: 'Compliance Risk',
-            technicalDebt: 'Technical Debt',
-            securityRisk: 'Security Risk',
-            teamMorale: 'Team Morale',
-            adoption: 'Adoption',
-            revenue: 'Revenue',
-            stakeholderConfidence: 'Stakeholder Confidence',
-            operatingCost: 'Operating Cost'
+        const dim = TradeoffLab.getDimension(key);
+        return dim ? dim.label : key;
+    },
+
+    renderTradeoffLabScreen() {
+        const role = getActiveRole();
+        const questions = GameState.allQuestions;
+        const dimA = GameState.labDimensionA;
+        const dimB = GameState.labDimensionB;
+        const tensionActive = dimA && dimB && dimA !== dimB;
+
+        const listItems = tensionActive
+            ? TradeoffLab.rankByTension(questions, dimA, dimB)
+            : questions.map(question => ({ question, tension: 0 }));
+
+        const selectedQuestion = questions.find(q => q.id === GameState.labQuestionId) || null;
+
+        const dimensionOptions = (selectedKey) =>
+            `<option value="">— Any —</option>` +
+            CONSEQUENCE_DIMENSIONS.map(d =>
+                `<option value="${d.key}" ${d.key === selectedKey ? 'selected' : ''}>${d.label}</option>`
+            ).join('');
+
+        const searchTerm = GameState.labSearch.trim().toLowerCase();
+
+        const el = document.createElement('div');
+        el.className = 'screen';
+        el.innerHTML = `
+            <div class="screen-content lab-screen">
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Trade-off Lab</h2>
+                        <span class="badge badge-competency">${role.name}</span>
+                    </div>
+                    <p class="lab-intro">
+                        Pick any question to compare its four options side by side, or choose two
+                        dimensions to find the questions where they pull in opposite directions.
+                    </p>
+                    <div class="lab-controls">
+                        <div class="lab-control">
+                            <label for="lab-dim-a">Dimension A</label>
+                            <select id="lab-dim-a" onchange="setLabDimension('a', this.value)">${dimensionOptions(dimA)}</select>
+                        </div>
+                        <div class="lab-control">
+                            <label for="lab-dim-b">Dimension B</label>
+                            <select id="lab-dim-b" onchange="setLabDimension('b', this.value)">${dimensionOptions(dimB)}</select>
+                        </div>
+                        <div class="lab-control lab-control-search">
+                            <label for="lab-search">Search</label>
+                            <input id="lab-search" type="text" placeholder="Filter by title or competency"
+                                   value="${GameState.labSearch}" oninput="filterLabList(this.value)">
+                        </div>
+                    </div>
+                    ${tensionActive ? `
+                        <p class="lab-hint">
+                            <strong>${listItems.length}</strong> questions where
+                            <strong>${TradeoffLab.getDimension(dimA).label}</strong> conflicts with
+                            <strong>${TradeoffLab.getDimension(dimB).label}</strong>, ranked by conflict strength.
+                        </p>
+                    ` : ''}
+                    <div class="lab-question-list" id="lab-question-list">
+                        ${listItems.map(item => {
+                            const q = item.question;
+                            const searchText = `${q.title} ${q.primaryCompetency}`.toLowerCase().replace(/"/g, '');
+                            const visible = !searchTerm || searchText.includes(searchTerm);
+                            return `
+                                <button class="lab-question-item ${selectedQuestion && selectedQuestion.id === q.id ? 'active' : ''}"
+                                        data-search="${searchText}"
+                                        ${visible ? '' : 'style="display:none"'}
+                                        onclick="selectLabQuestion(${q.id})">
+                                    <span class="lab-q-title">${q.title}</span>
+                                    <span class="lab-q-badges">
+                                        <span class="badge badge-difficulty ${q.difficulty}">${q.difficulty}</span>
+                                        <span class="badge badge-competency">${q.primaryCompetency}</span>
+                                        ${item.tension > 0 ? `<span class="tension-badge">conflict ${item.tension}</span>` : ''}
+                                    </span>
+                                </button>
+                            `;
+                        }).join('')}
+                    </div>
+                    <div style="margin-top: 20px;">
+                        <button class="btn-secondary" onclick="navigateTo('${GameState.MODE_SELECT}')">Back to Modes</button>
+                    </div>
+                </div>
+                ${selectedQuestion
+                    ? this.renderLabMatrix(selectedQuestion)
+                    : `<div class="card lab-empty"><p>Select a question above to compare its four options side by side.</p></div>`}
+            </div>
+        `;
+        this.appContainer.appendChild(el);
+    },
+
+    renderLabMatrix(question) {
+        const rows = CONSEQUENCE_DIMENSIONS.filter(d =>
+            question.options.some(o => o.consequenceMetrics && d.key in o.consequenceMetrics)
+        );
+
+        const metricCell = (dim, option) => {
+            const metrics = option.consequenceMetrics || {};
+            if (!(dim.key in metrics)) {
+                return `<td class="lab-cell empty">–</td>`;
+            }
+            const value = metrics[dim.key];
+            const goodness = TradeoffLab.goodness(dim.key, value);
+            const cls = goodness > 0 ? 'good' : goodness < 0 ? 'bad' : 'neutral';
+            return `<td class="lab-cell ${cls}">${value > 0 ? '+' : ''}${value}</td>`;
         };
-        return labels[key] || key;
+
+        return `
+            <div class="card" id="lab-matrix">
+                <div class="card-header">
+                    <h2 class="card-title">${question.title}</h2>
+                    <span class="lab-q-badges">
+                        <span class="badge badge-difficulty ${question.difficulty}">${question.difficulty}</span>
+                        <span class="badge badge-competency">${question.primaryCompetency}</span>
+                    </span>
+                </div>
+                <div class="scenario">${question.scenario}</div>
+                <div class="question-text">${question.question}</div>
+
+                <div class="lab-table-wrap">
+                    <table class="lab-matrix-table">
+                        <thead>
+                            <tr>
+                                <th>Impact</th>
+                                ${question.options.map(o => `
+                                    <th class="${o.id === question.bestOptionId ? 'best-col' : ''}">
+                                        <span class="lab-col-letter">${o.id}${o.id === question.bestOptionId ? ' ★' : ''}</span>
+                                        <span class="review-score-badge score-${o.score}">${o.score}/3</span>
+                                    </th>
+                                `).join('')}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rows.map(dim => `
+                                <tr>
+                                    <td class="lab-row-label">${dim.label}${dim.higherIsBetter ? '' : ' <span class="inverted-note">(increase = bad)</span>'}</td>
+                                    ${question.options.map(o => metricCell(dim, o)).join('')}
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                <p class="lab-legend">Green = favorable impact · Red = unfavorable impact · ★ = recommended answer</p>
+
+                <div class="lab-options-grid">
+                    ${question.options.map(o => `
+                        <div class="lab-option-card ${o.id === question.bestOptionId ? 'best' : ''}">
+                            <div class="lab-option-head">
+                                <span class="option-label">${o.id}</span>
+                                <span class="review-score-badge score-${o.score}">${o.score}/3</span>
+                                ${o.id === question.bestOptionId ? '<span class="lab-best-tag">Recommended</span>' : ''}
+                            </div>
+                            <p class="lab-option-text">${o.text}</p>
+                            <p class="lab-option-feedback">${o.feedback}</p>
+                            ${o.tradeoffs && o.tradeoffs.length ? `
+                                <label class="feedback-label">Trade-offs</label>
+                                <ul class="tradeoffs-list">${o.tradeoffs.map(t => `<li>${t}</li>`).join('')}</ul>
+                            ` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+
+                <div class="feedback-section">
+                    <label class="feedback-label">Why The Recommended Option Wins</label>
+                    <div class="feedback-text">${question.bestAnswerExplanation}</div>
+                </div>
+                <div class="feedback-section">
+                    <label class="feedback-label">Interview Insight</label>
+                    <div class="feedback-text">${question.interviewInsight}</div>
+                </div>
+                <div class="feedback-section">
+                    <label class="feedback-label">Learning Point</label>
+                    <div class="feedback-text">${question.learningPoint}</div>
+                </div>
+            </div>
+        `;
     },
 
     getRecommendation(score, session) {
@@ -881,8 +1165,44 @@ function navigateTo(screen) {
     UI.render(screen);
 }
 
-function handleModeSelect() {
+function selectRole(roleId) {
+    if (!ROLES[roleId]) return;
+    GameState.currentRole = roleId;
+    GameState.allQuestions = ROLES[roleId].getQuestions();
     navigateTo(GameState.MODE_SELECT);
+}
+
+function openTradeoffLab() {
+    GameState.labDimensionA = '';
+    GameState.labDimensionB = '';
+    GameState.labQuestionId = null;
+    GameState.labSearch = '';
+    navigateTo(GameState.TRADEOFF_LAB);
+}
+
+function setLabDimension(which, value) {
+    if (which === 'a') {
+        GameState.labDimensionA = value;
+    } else {
+        GameState.labDimensionB = value;
+    }
+    navigateTo(GameState.TRADEOFF_LAB);
+}
+
+function selectLabQuestion(questionId) {
+    GameState.labQuestionId = questionId;
+    navigateTo(GameState.TRADEOFF_LAB);
+    document.getElementById('lab-matrix')?.scrollIntoView({ behavior: 'smooth' });
+}
+
+// Filters the question list in place (no re-render, so the input keeps focus)
+function filterLabList(term) {
+    GameState.labSearch = term;
+    const normalized = term.trim().toLowerCase();
+    document.querySelectorAll('#lab-question-list .lab-question-item').forEach(item => {
+        const matches = !normalized || item.dataset.search.includes(normalized);
+        item.style.display = matches ? '' : 'none';
+    });
 }
 
 function startPracticeMode() {
@@ -1073,18 +1393,23 @@ function handleReviewPreviousSessions() {
 function initializeGame() {
     UI.init();
 
-    // Validate questions
-    if (!QuestionUtils.validateQuestionBank(QUESTIONS)) {
-        console.error('Failed to validate question bank. Cannot start game.');
+    // Validate every role's question bank at startup
+    let allValid = true;
+    Object.values(ROLES).forEach(role => {
+        const questions = role.getQuestions();
+        if (!QuestionUtils.validateQuestionBank(questions, role.competencies, role.name)) {
+            allValid = false;
+            return;
+        }
+        const scenarioCount = QuestionUtils.getScenarioBasedCount(questions);
+        console.log(`✓ ${role.name}: ${scenarioCount} of ${questions.length} questions are scenario-based (requirement: ≥70)`);
+    });
+
+    if (!allValid) {
+        console.error('Failed to validate question banks. Cannot start game.');
         alert('Error: Invalid question bank. Check console for details.');
         return;
     }
-
-    GameState.allQuestions = QUESTIONS;
-
-    // Check for scenario-based questions
-    const scenarioCount = QuestionUtils.getScenarioBasedCount(QUESTIONS);
-    console.log(`✓ ${scenarioCount} of ${QUESTIONS.length} questions are scenario-based (requirement: ≥70)`);
 
     console.log('✓ Game initialized successfully');
     navigateTo(GameState.START);

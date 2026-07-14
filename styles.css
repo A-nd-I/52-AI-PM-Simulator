@@ -117,6 +117,22 @@ body {
     font-size: 0.95em;
 }
 
+.role-card {
+    text-align: left;
+    position: relative;
+}
+
+.role-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    margin-bottom: 12px;
+    background: #e7f3ff;
+    color: #0c5aa0;
+    border-radius: 4px;
+    font-size: 0.8em;
+    font-weight: 700;
+}
+
 /* =============================================================================
    BUTTONS
    ============================================================================= */
@@ -1113,5 +1129,270 @@ button:focus,
 
     button {
         display: none;
+    }
+}
+
+/* =============================================================================
+   TRADE-OFF LAB
+   ============================================================================= */
+
+.lab-intro {
+    color: #7f8c8d;
+    margin-bottom: 20px;
+}
+
+.lab-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1.4fr;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.lab-control {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.lab-control label {
+    font-size: 0.8em;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #7f8c8d;
+}
+
+.lab-control select,
+.lab-control input {
+    padding: 10px 12px;
+    border: 2px solid #dfe6e9;
+    border-radius: 6px;
+    font-size: 0.95em;
+    font-family: inherit;
+    background: #fff;
+    color: #2c3e50;
+}
+
+.lab-control select:focus,
+.lab-control input:focus {
+    outline: none;
+    border-color: #3498db;
+}
+
+.lab-hint {
+    background: #e7f3ff;
+    color: #0c5aa0;
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 0.9em;
+    margin-bottom: 14px;
+}
+
+.lab-question-list {
+    max-height: 320px;
+    overflow-y: auto;
+    border: 1px solid #ecf0f1;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+}
+
+.lab-question-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    text-align: left;
+    padding: 10px 14px;
+    background: #fff;
+    border: none;
+    border-bottom: 1px solid #ecf0f1;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.92em;
+    color: #2c3e50;
+}
+
+.lab-question-item:last-child {
+    border-bottom: none;
+}
+
+.lab-question-item:hover,
+.lab-question-item:focus-visible {
+    background: #f4f9fd;
+    outline: none;
+}
+
+.lab-question-item.active {
+    background: #e7f3ff;
+    box-shadow: inset 3px 0 0 #3498db;
+}
+
+.lab-q-title {
+    font-weight: 600;
+    flex: 1;
+}
+
+.lab-q-badges {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.tension-badge {
+    background: #fdecea;
+    color: #c0392b;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 0.8em;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.lab-empty p {
+    color: #7f8c8d;
+    text-align: center;
+    padding: 20px 0;
+}
+
+.lab-table-wrap {
+    overflow-x: auto;
+    margin-top: 20px;
+}
+
+.lab-matrix-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9em;
+}
+
+.lab-matrix-table th,
+.lab-matrix-table td {
+    border: 1px solid #ecf0f1;
+    padding: 8px 10px;
+    text-align: center;
+}
+
+.lab-matrix-table thead th {
+    background: #f8fafb;
+    vertical-align: middle;
+}
+
+.lab-matrix-table thead th.best-col {
+    background: #eafaf1;
+}
+
+.lab-col-letter {
+    display: block;
+    font-weight: 700;
+    font-size: 1.1em;
+    color: #2c3e50;
+    margin-bottom: 4px;
+}
+
+.lab-row-label {
+    text-align: left !important;
+    font-weight: 600;
+    color: #2c3e50;
+    white-space: nowrap;
+}
+
+.inverted-note {
+    font-weight: 400;
+    font-size: 0.8em;
+    color: #95a5a6;
+}
+
+.lab-cell {
+    font-weight: 700;
+}
+
+.lab-cell.good {
+    background: #eafaf1;
+    color: #1e8449;
+}
+
+.lab-cell.bad {
+    background: #fdecea;
+    color: #c0392b;
+}
+
+.lab-cell.neutral {
+    color: #7f8c8d;
+}
+
+.lab-cell.empty {
+    color: #bdc3c7;
+}
+
+.lab-legend {
+    font-size: 0.82em;
+    color: #7f8c8d;
+    margin-top: 8px;
+}
+
+.lab-options-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+    margin-top: 24px;
+    margin-bottom: 24px;
+}
+
+.lab-option-card {
+    border: 2px solid #ecf0f1;
+    border-radius: 8px;
+    padding: 16px;
+    background: #fff;
+}
+
+.lab-option-card.best {
+    border-color: #27ae60;
+    background: #fbfffc;
+}
+
+.lab-option-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.lab-best-tag {
+    background: #27ae60;
+    color: #fff;
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 0.78em;
+    font-weight: 700;
+}
+
+.lab-option-text {
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 8px;
+}
+
+.lab-option-feedback {
+    font-size: 0.9em;
+    color: #555;
+    margin-bottom: 10px;
+}
+
+@media (max-width: 768px) {
+    .lab-controls {
+        grid-template-columns: 1fr;
+    }
+
+    .lab-question-item {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .lab-q-badges {
+        justify-content: flex-start;
     }
 }
