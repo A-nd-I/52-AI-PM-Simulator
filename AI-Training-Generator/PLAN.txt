@@ -1,0 +1,214 @@
+================================================================================
+AI TRAINING GENERATOR - PLAN DE IMPLEMENTACION
+================================================================================
+Version dinamica del PM Interview Practice: mismo flujo de juego, pero las
+preguntas, respuestas, competencias y feedback se generan con IA en tiempo
+real a partir de dos inputs del usuario:
+
+  1. profession    (ej. "Data Engineer", "UX Researcher", "Scrum Master")
+  2. extraDetails  (ej. "enfocado en fintech, nivel senior, entrevistas FAANG")
+
+Objetivo: que cada sesion tenga preguntas y opciones SIEMPRE diferentes,
+tanto en Practice Mode como en Interview Simulation.
+
+
+--------------------------------------------------------------------------------
+1. QUE SE MANTIENE DEL PROYECTO ACTUAL (52-AI-PM-Simulator)
+--------------------------------------------------------------------------------
+- El flujo completo de pantallas: start -> setup -> mode select -> question ->
+  feedback -> results -> review (+ Trade-off Lab opcional en fase posterior).
+- El schema de pregunta (JSON): id, title, type, difficulty, primaryCompetency,
+  secondaryCompetencies, scenario, question, options[4] (text, score 0-3,
+  feedback, tradeoffs, consequenceMetrics), bestOptionId, bestAnswerExplanation,
+  interviewInsight, learningPoint.
+- La logica de scoring, competencias (puntos ganados / disponibles), labels de
+  readiness (Strong / Interview Ready / Developing / etc.), timer de 90s,
+  contador N/10 en interview, review con filtros.
+- La validacion del banco: se convierte en validacion POR PREGUNTA en runtime
+  (validateQuestion(q, competencies)) porque ya no existe un banco fijo.
+
+Lo que CAMBIA: questions.js / questions-saas.js desaparecen. En su lugar hay
+un modulo generator.js que llama a un LLM y devuelve preguntas validadas.
+
+
+--------------------------------------------------------------------------------
+2. DECISION DE ARQUITECTURA: COMO SE LLAMA A LA IA
+--------------------------------------------------------------------------------
+El proyecto actual es 100% estatico (abrir index.html). Con IA hay 3 opciones:
+
+  Opcion A - BYOK (Bring Your Own Key), sin backend:
+    El usuario pega su propia API key (OpenAI / Anthropic / Gemini) en un
+    campo de configuracion; se guarda en localStorage y el frontend llama
+    directo a la API del proveedor.
+    + Sigue siendo un proyecto estatico, cero infraestructura.
+    - La key vive en el navegador (aceptable para uso personal, no para
+      publicar como producto).
+
+  Opcion B - Backend delgado (proxy):
+    Un endpoint minimo (Node/Express, Cloudflare Worker o Vercel function)
+    que guarda la key en el servidor y expone POST /generate-questions.
+    + Key protegida, control de rate limit y costos.
+    - Ya no es "abrir un html"; requiere deploy.
+
+  Opcion C - Modelo local (Ollama):
+    Llamar a http://localhost:11434 con un modelo local.
+    + Gratis y privado.  - Calidad de preguntas inferior, requiere setup.
+
+  RECOMENDACION: empezar con Opcion A (BYOK) para el MVP personal, dejando el
+  cliente de IA detras de una interfaz (aiClient.generate(prompt)) para poder
+  cambiar a B o C sin tocar el resto del codigo.
+
+
+--------------------------------------------------------------------------------
+3. FLUJO DE SETUP DINAMICO (nuevo paso antes de elegir modo)
+--------------------------------------------------------------------------------
+Pantalla "Role Setup":
+  - Inputs: profession (texto corto, requerido) y extraDetails (textarea,
+    opcional), + seleccion de idioma de las preguntas.
+  - Al confirmar, se hace UNA llamada de "role bootstrap" al LLM que genera
+    el perfil del rol en JSON:
+
+      {
+        "roleName": "...",
+        "tagline": "...",
+        "competencies": [ 18 competencias especificas de la profesion ],
+        "consequenceDimensions": [ 10-12 dimensiones con label y
+                                    higherIsBetter true/false ],
+        "topics": [ 30-40 temas/areas tipicas de entrevista para ese rol ]
+      }
+
+  - Este perfil se valida (cantidad de competencias, dimensiones bien
+    formadas) y se guarda en localStorage cacheado por hash de
+    (profession + extraDetails), para no regenerarlo en cada visita.
+  - El resto del juego usa este perfil igual que hoy usa ROLES.ai / ROLES.saas.
+
+Por que un paso de bootstrap: las competencias y dimensiones deben ser
+estables durante toda la sesion para que el scoring por competencia y el
+reporte final tengan sentido.
+
+
+--------------------------------------------------------------------------------
+4. GENERACION DINAMICA DE PREGUNTAS
+--------------------------------------------------------------------------------
+4.1 Prompt de generacion (plantilla):
+  - System prompt fijo: "Eres un generador de preguntas de entrevista tipo
+    escenario... devuelve SOLO JSON valido con este schema exacto: [schema]
+    ... reglas: 4 opciones plausibles, exactamente una con score 3,
+    bestOptionId debe coincidir, consequenceMetrics entre -10 y +10,
+    competencias SOLO de esta lista: [competencies del bootstrap]".
+  - User prompt variable por lote:
+      profession, extraDetails,
+      topics asignados a este lote (rotados de la lista del bootstrap),
+      competencias objetivo del lote (para balance),
+      dificultad objetivo (mezcla easy/medium/hard),
+      lista de EXCLUSION: titulos y temas ya usados (ver 4.4).
+
+4.2 Generacion por lotes con prefetch (clave para la latencia):
+  - Nunca generar de una en una en el momento de mostrarla (el usuario
+    esperaria 5-15s por pregunta).
+  - Estrategia: cola de preguntas (questionQueue).
+      * Al iniciar un modo se genera el lote 1 (ej. 5 preguntas) mostrando
+        una pantalla de "preparando tu entrevista..." con progreso.
+      * Mientras el usuario responde la pregunta 1-2, se pide en background
+        el lote 2, y asi sucesivamente (prefetch cuando queden <3 en cola).
+  - Con esto la espera solo ocurre una vez al inicio.
+
+4.3 Validacion y reintentos:
+  - Cada respuesta del LLM se parsea (JSON.parse con extraccion de bloque
+    ```json si viene envuelto) y se pasa por validateQuestion().
+  - Preguntas invalidas se descartan y se reintenta (max 2 reintentos por
+    lote); si un lote llega parcial, se acepta lo valido y se repone en el
+    siguiente prefetch.
+  - Los ids se asignan localmente (contador de sesion), no los da el LLM.
+
+4.4 Anti-repeticion (requisito: "siempre preguntas diferentes"):
+  - Registro persistente en localStorage por perfil de rol:
+      usedTitles[], usedTopicPairs[] (tema + competencia), ultimos N=100.
+  - Cada prompt incluye: "NO repitas ni parafrasees estos escenarios: [...]".
+  - Rotacion deterministica de topics del bootstrap entre lotes + temperatura
+    alta (0.9-1.0) para variedad.
+  - Chequeo local de similitud barata (normalizar titulo, comparar tokens)
+    como segunda barrera: si un titulo generado se parece >70% a uno usado,
+    se descarta esa pregunta.
+
+4.5 Practice Mode dinamico:
+  - Sin limite de 100: es un stream infinito de preguntas (el usuario decide
+    cuando parar; boton "Finish session" siempre visible).
+  - Feedback inmediato igual que hoy (el feedback viene incluido en el JSON
+    generado, no requiere segunda llamada).
+
+4.6 Interview Simulation dinamico:
+  - Al iniciarse se generan las 10 preguntas del examen (2 lotes de 5) ANTES
+    de arrancar el timer de la primera, balanceadas por competencia (el
+    prompt del lote pide competencias especificas).
+  - Igual que hoy: 90s por pregunta, contador N/10, sin feedback hasta el
+    final, reporte de readiness al terminar.
+  - Si la generacion falla a mitad del examen no afecta: las 10 ya estan
+    en memoria desde el inicio.
+
+
+--------------------------------------------------------------------------------
+5. MANEJO DE ERRORES, COSTOS Y CALIDAD
+--------------------------------------------------------------------------------
+- Errores de red/API: pantalla de retry con mensaje claro; nunca perder las
+  respuestas ya dadas (sesion en memoria + localStorage).
+- Costos: mostrar contador aproximado de tokens/preguntas generadas por
+  sesion; permitir elegir modelo (barato para practice, mejor para interview).
+- Calidad: incluir en el system prompt las reglas de calidad del proyecto
+  actual (opciones todas plausibles, sin respuestas absurdas, escenarios
+  especificos, trade-offs reales). Boton "Report bad question" que la
+  descarta y la agrega a la lista de exclusion.
+- Moderacion/limites: truncar extraDetails (ej. 500 chars) y sanitizarlo
+  (es input que entra a un prompt).
+
+
+--------------------------------------------------------------------------------
+6. ESTRUCTURA DE ARCHIVOS PROPUESTA
+--------------------------------------------------------------------------------
+AI-Training-Generator/
+  index.html          shell de la app
+  styles.css          reutilizar ~90% del CSS actual
+  app.js              estado, pantallas, scoring (adaptado del actual)
+  roleProfile.js      bootstrap del rol: prompt, validacion, cache
+  generator.js        cola de preguntas, lotes, prefetch, anti-repeticion
+  aiClient.js         interfaz unica hacia el proveedor de IA (BYOK MVP)
+  validators.js       validateRoleProfile, validateQuestion
+  prompts.js          plantillas de system/user prompts
+  README.md
+
+
+--------------------------------------------------------------------------------
+7. FASES DE ENTREGA
+--------------------------------------------------------------------------------
+Fase 1 (MVP nucleo):
+  - Setup screen (profession + extraDetails), aiClient BYOK, bootstrap del
+    perfil de rol con validacion y cache.
+  - Practice Mode dinamico con lotes de 5 + prefetch + feedback inmediato.
+  - Validacion por pregunta + reintentos.
+
+Fase 2 (Interview):
+  - Interview Simulation: 10 preguntas pre-generadas balanceadas, timer,
+    reporte final de readiness por competencia dinamica.
+
+Fase 3 (Persistencia y anti-repeticion fuerte):
+  - Historial de exclusion por perfil, chequeo de similitud local,
+    best scores y ultimas 5 sesiones por perfil (hash del rol).
+
+Fase 4 (Extras):
+  - Trade-off Lab sobre las preguntas generadas en la sesion.
+  - Export/import de sesiones, seleccion de modelo, backend proxy (Opcion B)
+    si se quiere publicar.
+
+
+--------------------------------------------------------------------------------
+8. RIESGOS PRINCIPALES Y MITIGACION
+--------------------------------------------------------------------------------
+- Latencia de generacion  -> lotes + prefetch + pantalla de preparacion.
+- JSON malformado         -> validacion estricta + reintentos + descarte.
+- Repeticion de preguntas -> exclusion en prompt + similitud local + topics
+                             rotados + temperatura alta.
+- Calidad inconsistente   -> reglas de calidad en system prompt + report
+                             button + modelo mejor para interview mode.
+- Seguridad de la API key -> BYOK solo uso personal; para publicar, Fase 4
+                             con backend proxy.
+================================================================================
