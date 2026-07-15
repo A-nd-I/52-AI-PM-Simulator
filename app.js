@@ -176,7 +176,8 @@ const GameState = {
     labDimensionA: '',
     labDimensionB: '',
     labQuestionId: null,
-    labSearch: ''
+    labSearch: '',
+    labQuestions: []
 };
 
 // =============================================================================
@@ -384,6 +385,16 @@ const QuestionUtils = {
         return questions.filter(q => q.type === 'scenario').length;
     },
 
+    // Fisher-Yates shuffle so each Practice session starts in a fresh order
+    shuffleQuestions(questions) {
+        const shuffled = [...questions];
+        for (let i = shuffled.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+        return shuffled;
+    },
+
     selectRandomQuestions(questions, count) {
         if (!questions || questions.length === 0) {
             return [];
@@ -431,7 +442,8 @@ const QuestionUtils = {
             }
         }
 
-        return selected;
+        // Shuffle final order so interviews don't follow the competency round-robin pattern
+        return this.shuffleQuestions(selected);
     }
 };
 
@@ -968,11 +980,15 @@ const UI = {
 
     renderTradeoffLabScreen() {
         const role = getActiveRole();
-        const questions = GameState.allQuestions;
+        const questions = GameState.labQuestions.length
+            ? GameState.labQuestions
+            : GameState.allQuestions;
         const dimA = GameState.labDimensionA;
         const dimB = GameState.labDimensionB;
         const tensionActive = dimA && dimB && dimA !== dimB;
 
+        // Without a tension lens, keep the shuffled browse order from openTradeoffLab.
+        // With a tension lens, rank by conflict strength instead.
         const listItems = tensionActive
             ? TradeoffLab.rankByTension(questions, dimA, dimB)
             : questions.map(question => ({ question, tension: 0 }));
@@ -1177,6 +1193,7 @@ function openTradeoffLab() {
     GameState.labDimensionB = '';
     GameState.labQuestionId = null;
     GameState.labSearch = '';
+    GameState.labQuestions = QuestionUtils.shuffleQuestions(GameState.allQuestions);
     navigateTo(GameState.TRADEOFF_LAB);
 }
 
@@ -1208,7 +1225,7 @@ function filterLabList(term) {
 function startPracticeMode() {
     Timer.stop();
     GameState.currentMode = GameState.PRACTICE;
-    GameState.practiceQuestions = [...GameState.allQuestions];
+    GameState.practiceQuestions = QuestionUtils.shuffleQuestions(GameState.allQuestions);
     GameState.currentQuestionIndex = 0;
     GameState.sessionAnswers = [];
     GameState.selectedAnswer = null;
